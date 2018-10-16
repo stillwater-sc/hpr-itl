@@ -17,6 +17,18 @@
 
 
 namespace hpr {
+	template<typename Vector, size_t nbits, size_t es, size_t capacity = 10>
+	sw::unum::posit<nbits, es> fused_dot(const Vector& x, const Vector& y) {
+		sw::unum::quire<nbits, es, capacity> q = 0;
+		size_t ix, iy, n = size(x);
+		for (ix = 0, iy = 0; ix < n && iy < n; ix = ix + 1, iy = iy + 1) {
+			q += sw::unum::quire_mul(x[ix], y[iy]);
+		}
+		sw::unum::posit<nbits, es> sum;
+		convert(q.to_value(), sum);     // one and only rounding step of the fused-dot product
+		return sum;
+	}
+
 	/// Conjugate Gradients without preconditioning
 	template < typename LinearOperator, typename HilbertSpaceX, typename HilbertSpaceB,
 		typename Iteration >
@@ -29,11 +41,14 @@ namespace hpr {
 		typedef typename mtl::Collection<HilbertSpaceX>::value_type Scalar;
 		typedef typename Iteration::real                            Real;
 
+		constexpr size_t nbits = Scalar::nbits;
+		constexpr size_t es = Scalar::es;
+
 		Scalar rho(0), rho_1(0), alpha(0), alpha_1(0);
 		Vector p(resource(x)), q(resource(x)), r(resource(x)), z(resource(x));
 
 		r = b - A*x;
-		rho = dot(r, r);
+		rho = fused_dot<Vector, nbits, es>(r, r);
 		while (!iter.finished(Real(sqrt(abs(rho))))) {
 			++iter;
 			if (iter.first())
@@ -73,22 +88,46 @@ try {
 	using Matrix = mtl::mat::compressed2D< Scalar >;
 	using Vector = mtl::vec::dense_vector< Scalar >;
 
-	// Create a 1,600 x 1,600 matrix using a 5-point Laplacian stencil
-	Matrix A(N, N);
-	mtl::mat::laplacian_setup(A, size, size);
+	{
+		// Create a 1,600 x 1,600 matrix using a 5-point Laplacian stencil
+		Matrix A(N, N);
+		mtl::mat::laplacian_setup(A, size, size);
 
-	// Create an ILU(0) preconditioner
-	pc::ilu_0< Matrix >        P(A);
+		// Create an ILU(0) preconditioner
+		pc::ilu_0< Matrix >        P(A);
 
-	// Set b such that x == 1 is solution; start with x == 0
-	dense_vector<Scalar>          x(N, 1.0), b(N);
-	b = A * x; x = 0;
+		// Set b such that x == 1 is solution; start with x == 0
+		dense_vector<Scalar>       x(N, 1.0), b(N);
+		b = A * x; x = 0;
 
-	// Termination criterion: r < 1e-6 * b or N iterations
-	noisy_iteration< Scalar >       iter(b, 500, 1.e-6);
+		// Termination criterion: r < 1e-6 * b or N iterations
+		noisy_iteration< Scalar >  iter(b, 500, 1.e-6);
 
-	// Solve Ax == b without a preconditioner P
-	itl::cg(A, x, b, iter);
+		// Solve Ax == b without a preconditioner P
+		itl::cg(A, x, b, iter);
+	}
+
+
+	{
+		cout << "HPR Conjugate Gradient\n";
+
+		// Create a 1,600 x 1,600 matrix using a 5-point Laplacian stencil
+		Matrix A(N, N);
+		mtl::mat::laplacian_setup(A, size, size);
+
+		// Create an ILU(0) preconditioner
+		pc::ilu_0< Matrix >        P(A);
+
+		// Set b such that x == 1 is solution; start with x == 0
+		dense_vector<Scalar>       x(N, 1.0), b(N);
+		b = A * x; x = 0;
+
+		// Termination criterion: r < 1e-6 * b or N iterations
+		noisy_iteration< Scalar >  iter(b, 500, 1.e-6);
+
+		// Solve Ax == b without a preconditioner P
+		hpr::cg(A, x, b, iter);
+	}
 
 	// Solve Ax == b with left preconditioner P
 	//itl::cg(A, x, b, iter);
