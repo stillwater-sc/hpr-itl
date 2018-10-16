@@ -69,6 +69,59 @@ namespace hpr {
 	}
 }
 
+template<typename Scalar>
+int regular_CG()
+{
+	using Matrix = mtl::mat::compressed2D< Scalar >;
+	using Vector = mtl::vec::dense_vector< Scalar >;
+
+	// Create a 1,600 x 1,600 matrix using a 5-point Laplacian stencil
+	const size_t size = 40, N = size * size;
+	Matrix A(N, N);
+	mtl::mat::laplacian_setup(A, size, size);
+
+	// Set b such that x == 1 is solution; start with x == 0
+	mtl::vec::dense_vector<Scalar>       x(N, 1.0), b(N);
+	b = A * x; x = 0;
+
+	// Termination criterion: r < 1e-6 * b or N iterations
+	//noisy_iteration< Scalar >  iter(b, 500, 1.e-6);
+	itl::cyclic_iteration< Scalar >  iter(b, 500, 1.e-6);
+
+	// Solve Ax == b without a preconditioner P
+	itl::cg(A, x, b, iter);
+
+	int nrOfIterations = -1;
+	if (iter.is_converged()) nrOfIterations = iter.iterations();
+	return nrOfIterations;
+}
+
+template<typename Scalar>
+int fdp_CG()
+{
+	using Matrix = mtl::mat::compressed2D< Scalar >;
+	using Vector = mtl::vec::dense_vector< Scalar >;
+
+	// Create a 1,600 x 1,600 matrix using a 5-point Laplacian stencil
+	const size_t size = 40, N = size * size;
+	Matrix A(N, N);
+	mtl::mat::laplacian_setup(A, size, size);
+
+	// Set b such that x == 1 is solution; start with x == 0
+	mtl::vec::dense_vector<Scalar>       x(N, 1.0), b(N);
+	b = A * x; x = 0;
+
+	// Termination criterion: r < 1e-6 * b or N iterations
+	//noisy_iteration< Scalar >  iter(b, 500, 1.e-6);
+	itl::cyclic_iteration< Scalar >  iter(b, 500, 1.e-6);
+
+	// Solve Ax == b without a preconditioner P
+	hpr::cg(A, x, b, iter);
+
+	int nrOfIterations = -1;
+	if (iter.is_converged()) nrOfIterations = iter.iterations();
+	return nrOfIterations;
+}
 
 int main(int argc, char** argv)
 try {
@@ -80,57 +133,26 @@ try {
 
 	bool bSuccess = true;
 
-	const size_t nbits = 32;
-	const size_t es = 2;
-	const size_t size = 40, N = size * size;
-
-	using Scalar = posit<nbits, es>;
-	using Matrix = mtl::mat::compressed2D< Scalar >;
-	using Vector = mtl::vec::dense_vector< Scalar >;
-
-	{
-		// Create a 1,600 x 1,600 matrix using a 5-point Laplacian stencil
-		Matrix A(N, N);
-		mtl::mat::laplacian_setup(A, size, size);
-
-		// Create an ILU(0) preconditioner
-		pc::ilu_0< Matrix >        P(A);
-
-		// Set b such that x == 1 is solution; start with x == 0
-		dense_vector<Scalar>       x(N, 1.0), b(N);
-		b = A * x; x = 0;
-
-		// Termination criterion: r < 1e-6 * b or N iterations
-		noisy_iteration< Scalar >  iter(b, 500, 1.e-6);
-
-		// Solve Ax == b without a preconditioner P
-		itl::cg(A, x, b, iter);
-	}
-
-
-	{
-		cout << "HPR Conjugate Gradient\n";
-
-		// Create a 1,600 x 1,600 matrix using a 5-point Laplacian stencil
-		Matrix A(N, N);
-		mtl::mat::laplacian_setup(A, size, size);
-
-		// Create an ILU(0) preconditioner
-		pc::ilu_0< Matrix >        P(A);
-
-		// Set b such that x == 1 is solution; start with x == 0
-		dense_vector<Scalar>       x(N, 1.0), b(N);
-		b = A * x; x = 0;
-
-		// Termination criterion: r < 1e-6 * b or N iterations
-		noisy_iteration< Scalar >  iter(b, 500, 1.e-6);
-
-		// Solve Ax == b without a preconditioner P
-		hpr::cg(A, x, b, iter);
-	}
-
-	// Solve Ax == b with left preconditioner P
-	//itl::cg(A, x, b, iter);
+	cout << "CG<double> #iterations: " << regular_CG<double>() << endl;
+	cout << "CG<posit<32,3> #iterations: " << fdp_CG< posit<32, 3> >() << endl;
+	cout << "CG<posit<32,2> #iterations: " << fdp_CG< posit<32, 2> >() << endl;
+	cout << "CG<posit<32,1> #iterations: " << fdp_CG< posit<32, 1> >() << endl;
+//	cout << "CG<posit<32,0> #iterations: " << fdp_CG< posit<32, 0> >() << endl;
+	cout << "CG<posit<28,3> #iterations: " << fdp_CG< posit<28, 3> >() << endl;
+	cout << "CG<posit<28,2> #iterations: " << fdp_CG< posit<28, 2> >() << endl;
+	cout << "CG<posit<28,1> #iterations: " << fdp_CG< posit<28, 1> >() << endl;
+//	cout << "CG<posit<28,0> #iterations: " << fdp_CG< posit<28, 0> >() << endl;
+	cout << "CG<posit<24,3> #iterations: " << fdp_CG< posit<24, 3> >() << endl;
+	cout << "CG<posit<24,2> #iterations: " << fdp_CG< posit<24, 2> >() << endl;
+	cout << "CG<posit<24,1> #iterations: " << fdp_CG< posit<24, 1> >() << endl;
+//	cout << "CG<posit<24,0> #iterations: " << fdp_CG< posit<24, 0> >() << endl;
+	cout << "CG<posit<20,3> #iterations: " << fdp_CG< posit<20, 3> >() << endl;
+	cout << "CG<posit<20,2> #iterations: " << fdp_CG< posit<20, 2> >() << endl;
+	cout << "CG<posit<20,1> #iterations: " << fdp_CG< posit<20, 1> >() << endl;
+//	cout << "CG<posit<20,0> #iterations: " << fdp_CG< posit<20, 0> >() << endl;
+	cout << "CG<posit<16,3> #iterations: " << fdp_CG< posit<16, 3> >() << endl;
+	cout << "CG<posit<16,2> #iterations: " << fdp_CG< posit<16, 2> >() << endl;
+	cout << "CG<posit<16,1> #iterations: " << fdp_CG< posit<16, 1> >() << endl;
 
 	return (bSuccess ? EXIT_FAILURE : EXIT_SUCCESS);
 }
