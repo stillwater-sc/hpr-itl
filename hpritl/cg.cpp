@@ -56,13 +56,15 @@ namespace hpr {
 			else
 				p = r + (rho / rho_1) * p;
 
-			// q = A * p; alpha = rho / dot(p, q);
-			(lazy(q) = A * p) || (lazy(alpha_1) = lazy_dot(p, q));
-			alpha = rho / alpha_1;
+			q = A * p; alpha = rho / fused_dot<Vector, nbits, es>(p, q);
+//			(lazy(q) = A * p) || (lazy(alpha_1) = lazy_dot(p, q));
+//			alpha = rho / alpha_1;
 
 			x += alpha * p;
 			rho_1 = rho;
-			(lazy(r) -= alpha * q) || (lazy(rho) = lazy_unary_dot(r));
+//			(lazy(r) -= alpha * q) || (lazy(rho) = lazy_unary_dot(r));
+			r -= alpha * q; rho = fused_dot<Vector, nbits, es>(r, r);
+			
 		}
 
 		return iter;
@@ -112,7 +114,7 @@ int fdp_CG()
 	b = A * x; x = 0;
 
 	// Termination criterion: r < 1e-6 * b or N iterations
-	//noisy_iteration< Scalar >  iter(b, 500, 1.e-6);
+	//itl::noisy_iteration< Scalar >  iter(b, 500, 1.e-6);
 	itl::cyclic_iteration< Scalar >  iter(b, 500, 1.e-6);
 
 	// Solve Ax == b without a preconditioner P
@@ -133,7 +135,12 @@ try {
 
 	bool bSuccess = true;
 
-	cout << "CG<double> #iterations: " << regular_CG<double>() << endl;
+	fdp_CG< posit<32, 2> >();
+
+	return 0;
+
+#if 0
+	cout << "CG<double> #iterations: " << regular_CG<float>() << endl;
 	cout << "CG<posit<32,3> #iterations: " << fdp_CG< posit<32, 3> >() << endl;
 	cout << "CG<posit<32,2> #iterations: " << fdp_CG< posit<32, 2> >() << endl;
 	cout << "CG<posit<32,1> #iterations: " << fdp_CG< posit<32, 1> >() << endl;
@@ -153,6 +160,7 @@ try {
 	cout << "CG<posit<16,3> #iterations: " << fdp_CG< posit<16, 3> >() << endl;
 	cout << "CG<posit<16,2> #iterations: " << fdp_CG< posit<16, 2> >() << endl;
 	cout << "CG<posit<16,1> #iterations: " << fdp_CG< posit<16, 1> >() << endl;
+#endif
 
 	return (bSuccess ? EXIT_FAILURE : EXIT_SUCCESS);
 }

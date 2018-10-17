@@ -17,11 +17,82 @@
 // defines all Krylov solvers
 // CG, CGS, BiCG, BiCGStab, BiCGStab2, BiCGStab_ell, FSM, IDRs, GMRES TFQMR, QMR, PC
 
-using namespace mtl;
-using namespace itl;
+
+
+namespace hpr {
+	template<typename Vector, size_t nbits, size_t es, size_t capacity = 10>
+	sw::unum::posit<nbits, es> fused_dot(const Vector& x, const Vector& y) {
+		sw::unum::quire<nbits, es, capacity> q = 0;
+		size_t ix, iy, n = size(x);
+		for (ix = 0, iy = 0; ix < n && iy < n; ix = ix + 1, iy = iy + 1) {
+			q += sw::unum::quire_mul(x[ix], y[iy]);
+		}
+		sw::unum::posit<nbits, es> sum;
+		convert(q.to_value(), sum);     // one and only rounding step of the fused-dot product
+		return sum;
+	}
+
+	///  Bi-Conjugate Gradient Stabilized
+	template < class LinearOperator, class HilbertSpaceX, class HilbertSpaceB,
+		class Preconditioner, class Iteration >
+		int bicgstab(const LinearOperator& A, HilbertSpaceX& x, const HilbertSpaceB& b,
+			const Preconditioner& M, Iteration& iter)
+	{
+		typedef typename mtl::Collection<HilbertSpaceX>::value_type Scalar;
+		typedef HilbertSpaceX                                       Vector;
+		mtl::vampir_trace<7004> tracer;
+
+		constexpr size_t nbits = Scalar::nbits;
+		constexpr size_t es = Scalar::es;
+
+		Scalar     rho_1(0), rho_2(0), alpha(0), beta(0), gamma, omega(0);
+		Vector     p(resource(x)), phat(resource(x)), s(resource(x)), shat(resource(x)),
+			t(resource(x)), v(resource(x)), r(resource(x)), rtilde(resource(x));
+
+		r = b - A * x;
+		rtilde = r;
+
+		while (!iter.finished(r)) {
+			++iter;
+			rho_1 = fused_dot<Vector, nbits, es>(rtilde, r);
+			MTL_THROW_IF(rho_1 == 0.0, itl::unexpected_orthogonality());
+
+			if (iter.first())
+				p = r;
+			else {
+				MTL_THROW_IF(omega == 0.0, itl::unexpected_orthogonality());
+				beta = (rho_1 / rho_2) * (alpha / omega);
+				p = r + beta * (p - omega * v);
+			}
+			phat = solve(M, p);
+			v = A * phat;
+
+			gamma = fused_dot<Vector, nbits, es>(rtilde, v);
+			MTL_THROW_IF(gamma == 0.0, itl::unexpected_orthogonality());
+
+			alpha = rho_1 / gamma;
+			s = r - alpha * v;
+
+			if (iter.finished(s)) {
+				x += alpha * phat;
+				break;
+			}
+			shat = solve(M, s);
+			t = A * shat;
+			omega = fused_dot<Vector, nbits, es>(t, s) / fused_dot<Vector, nbits, es>(t, t);
+
+			x += omega * shat + alpha * phat;
+			r = s - omega * t;
+
+			rho_2 = rho_1;
+		}
+		return iter;
+	}
+
+} // namespace hpr
 
 template<typename Scalar>
-void BiCGStab() {
+void regular_BiCGStab() {
 	using namespace std;
 	const size_t size = 40, N = size * size;
 
@@ -33,17 +104,43 @@ void BiCGStab() {
 	mtl::mat::laplacian_setup(A, size, size);
 
 	// Create an ILU(0) preconditioner
-	pc::ilu_0< Matrix >        P(A);
+	itl::pc::ilu_0< Matrix >        P(A);
 
 	// Set b such that x == 1 is solution; start with x == 0
-	dense_vector<Scalar>       x(N, 1.0), b(N);
+	mtl::vec::dense_vector<Scalar>       x(N, 1.0), b(N);
 	b = A * x; x = 0;
 
 	// Termination criterion: r < 1e-6 * b or N iterations
-	noisy_iteration< Scalar >  iter(b, 5, 1.e-6);
+	itl::noisy_iteration< Scalar >  iter(b, 5, 1.e-6);
 
 	// Solve Ax == b with left preconditioner P
-	bicgstab(A, x, b, P, iter);
+	itl::bicgstab(A, x, b, P, iter);
+}
+
+template<typename Scalar>
+void fdp_BiCGStab() {
+	using namespace std;
+	const size_t size = 40, N = size * size;
+
+	using Matrix = mtl::mat::compressed2D< Scalar >;
+	using Vector = mtl::vec::dense_vector< Scalar >;
+
+	// Create a 1,600 x 1,600 matrix using a 5-point Laplacian stencil
+	Matrix A(N, N);
+	mtl::mat::laplacian_setup(A, size, size);
+
+	// Create an ILU(0) preconditioner
+	itl::pc::ilu_0< Matrix >        P(A);
+
+	// Set b such that x == 1 is solution; start with x == 0
+	mtl::vec::dense_vector<Scalar>       x(N, 1.0), b(N);
+	b = A * x; x = 0;
+
+	// Termination criterion: r < 1e-6 * b or N iterations
+	itl::noisy_iteration< Scalar >  iter(b, 5, 1.e-6);
+
+	// Solve Ax == b with left preconditioner P
+	hpr::bicgstab(A, x, b, P, iter);
 }
 
 int main(int, char**)
@@ -56,8 +153,9 @@ int main(int, char**)
 
 	using Scalar = sw::unum::posit<nbits, es>;
 
-	BiCGStab<double>();
-	BiCGStab<Scalar>();
+	regular_BiCGStab<float>();
+	fdp_BiCGStab< sw::unum::posit<32, 2> >();
+	fdp_BiCGStab< sw::unum::posit<24, 3> >();
 
     return 0;
 }
