@@ -111,7 +111,7 @@ void regular_BiCGStab() {
 	b = A * x; x = 0;
 
 	// Termination criterion: r < 1e-6 * b or N iterations
-	itl::noisy_iteration< Scalar >  iter(b, 5, 1.e-6);
+	itl::noisy_iteration< Scalar >  iter(b, 5, (Scalar)1.e-6);
 
 	// Solve Ax == b with left preconditioner P
 	itl::bicgstab(A, x, b, P, iter);
